@@ -25,7 +25,7 @@ template <class value_t> class OpenAddressing {
         return index;
     }
 
-    void extend() {
+    void resize() {
         std::vector<key_t> key;
         std::vector<value_t> value;
         key.reserve(available);
@@ -39,10 +39,10 @@ template <class value_t> class OpenAddressing {
         const std::size_t len = available;
         available = 0;
         deleted = 0;
-        while (logn > 0 and 3 * len <= ((std::size_t)1 << logn)) {
-            logn -= 1;
+        logn = 0;
+        while (((std::size_t)1 << logn) < 3 * len) {
+            logn += 1;
         }
-        logn += 1;
         state = std::vector<State>((std::size_t)1 << logn, State::Null);
         keys = std::vector<key_t>((std::size_t)1 << logn);
         values = std::vector<value_t>((std::size_t)1 << logn);
@@ -64,8 +64,8 @@ template <class value_t> class OpenAddressing {
         if (state[index] == State::Null) {
             available += 1;
             state[index] = State::Available;
-            if (3 * (available + deleted) > 2 * state.size()) {
-                extend();
+            if (2 * (available + deleted) > state.size()) {
+                resize();
             }
         }
     }
@@ -77,6 +77,9 @@ template <class value_t> class OpenAddressing {
             available -= 1;
             deleted += 1;
             state[index] = State::Deleted;
+            if (8 * available < state.size()) {
+                resize();
+            }
         }
     }
 
