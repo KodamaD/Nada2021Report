@@ -1,0 +1,39 @@
+n = 100000
+Open Addressing erase: 8.6ms
+Open Addressing find1: 4.2ms
+Open Addressing find2: 4ms
+Open Addressing insert: 15.4ms
+Separate Chaining erase: 48.2ms
+Separate Chaining find1: 5ms
+Separate Chaining find2: 6.8ms
+Separate Chaining insert: 79.2ms
+std::unordered_map erase: 34.2ms
+std::unordered_map find1: 5.2ms
+std::unordered_map find2: 8.8ms
+std::unordered_map insert: 28.8ms
+n = 1000000
+Open Addressing erase: 142.2ms
+Open Addressing find1: 95.8ms
+Open Addressing find2: 97.2ms
+Open Addressing insert: 219.4ms
+Separate Chaining erase: 531ms
+Separate Chaining find1: 100.2ms
+Separate Chaining find2: 116.2ms
+Separate Chaining insert: 1023.4ms
+std::unordered_map erase: 406.8ms
+std::unordered_map find1: 101.6ms
+std::unordered_map find2: 145.6ms
+std::unordered_map insert: 514.6ms
+n = 10000000
+Open Addressing erase: 2610.2ms
+Open Addressing find1: 1502.4ms
+Open Addressing find2: 1504.4ms
+Open Addressing insert: 5155.4ms
+Separate Chaining erase: 10898ms
+Separate Chaining find1: 1812.8ms
+Separate Chaining find2: 1802.8ms
+Separate Chaining insert: 27753ms
+std::unordered_map erase: 5263.4ms
+std::unordered_map find1: 1817.8ms
+std::unordered_map find2: 2391ms
+std::unordered_map insert: 6856.2ms
