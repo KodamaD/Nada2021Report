@@ -1,0 +1,185 @@
+\documentclass[dvipdfmx,a4j,10pt]{jarticle}
+
+\usepackage[hyphens]{url}
+\usepackage[top=22truemm,bottom=22truemm,left=20truemm,right=20truemm]{geometry}
+
+\usepackage{tcolorbox}
+\newtcbox{\code}[1][]{
+  colback=gray!10!white,
+  colframe=gray!20!white,
+  boxrule=1pt,
+  left=0mm,right=0mm,top=0mm,bottom=0mm,
+  box align=base,
+  nobeforeafter,
+  fontupper=\ttfamily
+}
+
+\pagestyle{empty}
+
+\begin{document}
+
+\title{ハッシュテーブルの実装と計測}
+\author{$1$ 年 $3$ 組 $17$ 番 児玉大樹}
+\date{}
+\maketitle
+\thispagestyle{empty}
+
+\section{はじめに}
+
+プログラミング言語 C++ には、標準ライブラリに \code{std::unordered\_map} としてハッシュテーブルが実装されている。しかし、\code{std::unordered\_map} は要素へのポインタや参照を変化させてはならないという規格に基づいて実装されているため~\cite{C++Draft}、オーバーヘッドが生じ、実行時間が遅いという問題がある。本稿では、$2$ 種類のハッシュテーブルを実装し、それらと \code{std::unordered\_map} の性能を計測し比較する。
+
+\section{導入}
+
+\subsection{計算量}
+
+\textbf{計算量}は、アルゴリズムの効率を評価するための尺度であり、\textbf{ランダウ記法}を用いて「入力サイズ $n$ に対し、このアルゴリズムは時間計算量 $O(n)$ で動作する」のように記述される。
+
+\subsection{連想配列}
+
+プログラミングにおいて、複数の要素の列を扱うためには\textbf{配列}が用いられる。
+配列は非負整数を添字とするが、この添字として非負整数以外のデータ型も用いることのできるデータ構造を\textbf{連想配列}、あるいは\textbf{辞書}という。添字として用いるデータ型を \code{key}、要素とするデータ型を \code{value} と呼ぶ。
+
+連想配列は、以下の $3$ つの機能を実現する。
+
+\begin{itemize}
+  \item \code{insert} \mbox{}\\ 指定した \code{key} に対し、\code{value} を指定した値で紐づける。
+  \item \code{erase} \mbox{}\\ 指定した \code{key} と、それに紐づいた \code{value} の組を削除する。
+  \item \code{find} \mbox{}\\ 指定した \code{key} に紐づいた \code{value} の値を得る。指定した \code{key} が含まれていない場合は、そのことを報告する。
+\end{itemize}
+
+配列に \code{key} と \code{value} の組をそのまま格納することで、要素数を $m$ として最悪計算量 $\Theta (m)$ で $3$ つの操作を実現することができる。しかし、$n$ 回の操作に最悪 $\Theta (n^2)$ の計算量を要し、大きなサイズのデータを扱うためには現実的でない。そのため、より高速に要素を格納する手法が考えられてきた。
+
+\subsection{ハッシュテーブル}
+
+ハッシュテーブルは連想配列の一種である。\code{key} を\textbf{ハッシュ関数} $h$ によってある区間 $[0, n)$ に属する整数に変換し、\code{value} を大きさ $n$ 程度の配列に格納することで機能を実現することができる。
+
+しかし、用いるハッシュ関数の種類によっては、異なる $2$ つの \code{key} が同じ整数に変換されることがある（これを\textbf{衝突}という）。衝突に対処する方法は様々であり、本稿では $2$ つの手法を実装する。
+
+\section{ハッシュテーブルを実現する手法}
+
+\subsection{連鎖法}
+\label{連鎖法}
+
+\textbf{連鎖法（Separate Chaining）}\cite{データ構造}は、同じハッシュ値を持つ \code{key} と対応する \code{value} の組を全て同じリストに格納する。要素数が $m$ のとき、リストの個数 $n$ は $n \geq m$ を満たすようにすることで、リストの平均要素数が $1$ 以下となる。\code{insert}、\code{erase}、\code{find} の操作は、\code{key} $x$ のハッシュ値 $h(x)$ に対応するリスト内を線形探索することで実現することができる。
+
+\code{insert} 操作によって $n < m$ となってしまった場合、リストの個数を $2$ 倍に増やし、全ての要素のハッシュ値を計算し直し、もう一度リストに入れ直す。$m$ 個の要素を \code{insert} するときに要する再計算の計算量の合計は $O(m)$ となる。
+
+ハッシュ関数の性能が悪い場合、多くの要素が同じリストに格納されることになり、操作に $\Theta (m)$ の計算量を要する。高速に動作するためには、以下の条件を満たすハッシュ関数を用いるのが理想的である。
+\begin{quotation}
+\noindent $x, y$ が $2$ つの異なる \code{key} であるとき、$h(x) = h(y)$ となる確率は十分小さい定数 $c$ を用いて $\displaystyle \frac{c}{n}$ と表される。
+\end{quotation}
+このハッシュ関数を用いたとき、任意の \code{key} $x$ に対し、$h(x)$ に対応するリストの要素数の期待値は $\displaystyle \frac{cm}{n} \leq c$ で抑えられるため、$c$ が定数であることから操作を期待計算量 $O(1)$ で実現することができる。
+
+\subsection{開番地法}
+\label{開番地法}
+
+\textbf{開番地法（Open Addressing）}\cite{データ構造}は、要素を直接長さ $n$ の配列に格納する。新たな \code{key} $x$ を \code{insert} する際に $h(x)$ に対応する場所にすでに要素が格納されていた場合は、その近傍を探索し、空いている場所を探す。近傍を探索するにあたっては、$h(x)$ に対応する場所から $1$ ずつ増やす方法をとり、これを\textbf{線形探索法（Linear Probing）}という。配列には、次の $3$ つの種類の値を格納する。
+
+\begin{itemize}
+  \item その位置に要素が格納されている場合、\code{key} と \code{value} の組
+  \item その位置に格納された要素が削除された場合、そのことを表す特別な値 \code{del}
+  \item その位置には何も格納されず、削除もされていない場合、そのことを表す特別な値 \code{null}
+\end{itemize}
+
+$h(x)$ からはじめ、\code{null} を見つけるまで探索したとき、途中で \code{key} が $x$ であるような組が見つかった場合、ハッシュテーブルには \code{key} が $x$ であるような要素が存在する。そうでない、すなわち \code{null} が見つかった場合は、ハッシュテーブルには \code{key} が $x$ であるような要素は存在しない。このことを用いると、\code{insert}、\code{erase}、\code{find} の $3$ つの操作を実現することができる。
+
+配列の長さ $n$ は、\code{null} でない値の個数を $q$、そのうち \code{del} でない値の個数を $m$ として、$\displaystyle \frac{1}{8} n \leq m$ かつ $\displaystyle q \leq \frac{1}{2} n$ となるようにとる。条件を満たさなくなった場合は、$3m \leq 2^d$ を満たす最小の非負整数を $d$ とおいたとき、$n = 2^d$ として要素を格納し直す。連鎖法の場合と同様、$m$ 回の \code{insert}、\code{erase} を行うときに要する再計算の計算量の合計は $O(m)$ となる。
+
+開番地法には、衝突確率が低いハッシュ関数を用いたとしても、配列の連続した部分に要素が格納された場合 \code{null} にたどり着くまでの探索に長い時間がかかるという問題がある。開番地法では、以下の条件を満たすハッシュ関数を用いるのが理想的である。
+\begin{quotation}
+\noindent ハッシュ値は、$[0, n)$ に属する整数値を一様かつ独立にとる。
+\end{quotation}
+この強い仮定のもとで、$3$ つの操作を計算量 $O(1)$ で実現することができる。
+
+\subsection{ハッシュ関数の選択}
+\label{ハッシュ関数の選択}
+
+ハッシュ関数は、衝突確率が十分低くなるように \code{key} を $[0, n)$ に属する整数に変換する必要がある。このような条件を満たす関数を容易に定義できるようにするため、本稿では $2$ つの簡略化を行う。まず、\ref{連鎖法} と \ref{開番地法} で紹介した手法では、$n = 2^d$ となる非負整数 $d$ が存在すると仮定することができる。さらに、ハッシュ関数を次の $2$ つのステップに分ける。
+
+\begin{itemize}
+  \item $f(x)$ \mbox{}\\ \code{key} $x$ を $[0, 2^{64})$ に属する整数 $k$ に変換する。
+  \item $g(k)$ \mbox{}\\ $[0, 2^{64})$ に属する整数 $k$ を $[0, 2^d)$ に属する整数 $l$ に変換する。
+\end{itemize}
+
+\code{key} を整数に変換する際は、変換後の整数が属するべき区間として $[0, 2^{64})$ のみを考えればよい。また、ハッシュテーブルの要素数 $n$ に比べ $2^{64}$ は非常に大きいため、$1$ つ目のステップにおいて衝突を防ぐのは簡略化を行う前よりも容易である。$2$ つ目のステップにおいては、用いるハッシュテーブルの手法に適した関数を実装する必要がある。
+
+$1$ つ目のステップは、\code{key} とするデータ型によって使用する関数が大きく異なり、これはハッシュテーブルを使用するユーザに依存する。そのため本稿では、$2$ つ目のステップのみを実装する。$g(k)$ として使用するハッシュ関数は、以下のように定める。
+
+\begin{itemize}
+  \item \textbf{Multiplicative Hashing} \mbox{}\\ Multiplicative Hashing は、$[0, 2^{64})$ に属する奇数をランダムに選び $p$ とおいたとき、$\displaystyle g(k) = \left\lfloor \frac{pk \bmod 2^{64}}{2^{64-d}} \right\rfloor$ とする方法である。異なる $2$ つの整数 $k_1, k_2$ に対し $g(k_1) = g(k_2)$ となる確率は $\displaystyle \frac{2}{2^d}$ である~\cite{データ構造}。
+  \item \textbf{Fibonacci Hashing} \mbox{}\\ Multiplicative Hashing において、$\phi$ を黄金比として $\displaystyle \frac{2^{64}}{\phi}$ に近い値を $p$ として選ぶ（$p = 11400714819323198485$）と、得られる値が一様に分布するという性質がある~\cite{FibHash}。これは Multiplicative Hashing の特別な場合であり、Fibonacci Hashing と呼ばれる。
+\end{itemize}
+
+これらの方法に共通する問題点は、入力の上位ビットの情報が失われやすいことである~\cite{FibHash}。
+そこで、$pk$ の代わりに $k$ と $\displaystyle \left\lfloor \frac{k}{2^{64-d}} \right\rfloor$ の排他的論理和と $p$ の積を採用することで、上位ビットの情報を反映することができる。本稿では、この工夫を施した Fibonacci Hashing を使用する。
+
+\section{設計と実装}
+
+\ref{ハッシュ関数の選択} で述べたように、データ型を整数に変換する処理はユーザに依存するため、\code{key} は $64$ ビット整数に限定する（ただし、\code{value} としては任意の型を使用することができる）。ハッシュテーブルのインターフェイスとして、\code{insert}、\code{erase}、\code{find} 関数を実装した。コードは GitHub に公開している。
+
+\begin{description}
+  \item[開番地法] \url{https://github.com/KodamaD/Nada2021Report/blob/main/code/open_addressing.hpp}
+  \item[連鎖法] \url{https://github.com/KodamaD/Nada2021Report/blob/main/code/separate_chaining.hpp}
+\end{description}
+
+開番地法の実装において、要素を格納するために、必要最低限のメモリ量の $3$ 倍程度のメモリを確保している。\code{value} のデータ量が大きい場合これはオーバーヘッドとなるが、ユーザはこれに対処するために \code{value} のポインタを代わりに格納するという選択をすることができる。
+
+\section{計測と比較}
+
+\,\code{std::unordered\_map}、連鎖法、開番地法のそれぞれについて、以下の $4$ つの項目に関して実行時間を計測した。
+
+\begin{itemize}
+  \item $n$ 要素の \code{insert}
+  \item $n$ 要素の \code{erase}
+  \item ハッシュテーブルに格納されている $n$ 要素の \code{find}
+  \item ハッシュテーブルに格納されていない $n$ 要素の \code{find}
+\end{itemize}
+
+計測においては、$5$ 回の実行における実行時間の平均をとった。$n = 10^5, 10^6, 10^7$ とした場合の実行時間は以下のようである（単位はミリ秒）。
+
+\begin{table}[htb]
+  \centering
+    \caption{$n = 10^5$}
+    \begin{tabular}{|l||r|r|r|r|} \hline
+      ハッシュテーブルの手法 & \code{insert} & \code{erase} & 存在する要素の \code{find} & 存在しない要素の \code{find} \\ \hline \hline
+      \code{std::unordered\_map} & 28.8 & 34.2 & 5.2 & 8.8 \\ \hline
+      連鎖法 & 79.2 & 48.2 & 5.0 & 6.8 \\ \hline
+      開番地法 & 15.4 & 8.6 & 4.0 & 4.2 \\ \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[htb]
+  \centering
+    \caption{$n = 10^6$}
+    \begin{tabular}{|l||r|r|r|r|} \hline
+      ハッシュテーブルの手法 & \code{insert} & \code{erase} & 存在する要素の \code{find} & 存在しない要素の \code{find} \\ \hline \hline
+      \code{std::unordered\_map} & 514.6 & 406.8 & 101.6 & 145.6 \\ \hline
+      連鎖法 & 1023.4 & 531.0 & 100.2 & 116.2 \\ \hline
+      開番地法 & 219.4 & 142.2 & 95.8 & 97.2 \\ \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[htb]
+  \centering
+    \caption{$n = 10^7$}
+    \begin{tabular}{|l||r|r|r|r|} \hline
+      ハッシュテーブルの手法 & \code{insert} & \code{erase} & 存在する要素の \code{find} & 存在しない要素の \code{find} \\ \hline \hline
+      \code{std::unordered\_map} & 6856.2 & 5263.4 & 1817.8 & 2391.0 \\ \hline
+      連鎖法 & 27753.0 & 10898.0 & 1812.8 & 1802.8 \\ \hline
+      開番地法 & 5155.4 & 2610.2 & 1502.4 & 1504.4 \\ \hline
+    \end{tabular}
+\end{table}
+
+連鎖法は \code{insert}、\code{erase} 操作が非常に遅い。原因として、各種操作をポインタを介して行っていることが挙げられる。対照的に、開番地法はどの操作においても最も高速であり、\code{std::unordered\_map} より高速なハッシュテーブルの実現に成功している。
+
+\section{まとめ}
+
+連鎖法、開番地法を用いたハッシュテーブルを実装し、実行時間の計測を行った。連鎖法は \code{find} 操作を除けば非常に低速であるが、開番地法はどの操作でも高速である。別のハッシュ関数を採用したり、メモリ操作の最適化を施したりすることで、さらに高速なハッシュテーブルが実現できる可能性があると感じた。Robin Hood Hashing や Swiss Tables といった、より高速な手法も提案されているため、今後はそれらについても学び、実装したい。
+
+\begin{thebibliography}{9}
+  \bibitem{C++Draft} Richard Smith ``Working Draft, Standard for Programming Language C++''  \\ (\url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/n4861.pdf})
+  \bibitem{データ構造} Pat Morin（著）、堀江慧・陣内佑・田中康隆（訳）『みんなのデータ構造』ラムダノート株式会社 2018 年
+  \bibitem{FibHash} Malte Skarupke ``Fibonacci Hashing: The Optimization that the World Forgot (or: a Better Alternative to Integer Modulo)'' \\ (\url{https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/})
+\end{thebibliography}
+
+\end{document}
